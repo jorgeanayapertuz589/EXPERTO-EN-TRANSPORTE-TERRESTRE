@@ -11,7 +11,6 @@ st.set_page_config(page_title="Profesor de Logística Actualizado", page_icon="�
 st.title("🎓 Profesor de Logística (Lectura Total)")
 
 # 2. Función de procesamiento dinámico
-# No usamos ttl para que se actualice cada vez que detecte cambios en los archivos de la carpeta
 @st.cache_data(show_spinner=False)
 def cargar_todo_el_conocimiento(lista_archivos):
     texto_combinado = ""
@@ -23,7 +22,7 @@ def cargar_todo_el_conocimiento(lista_archivos):
         try:
             with pdfplumber.open(nombre_archivo) as pdf:
                 total_paginas = len(pdf.pages)
-                # Determinamos cuántas páginas leer (hasta 100, pero con un máximo de seguridad)
+                # Leemos hasta 100 páginas por documento
                 limite_paginas = min(total_paginas, 100)
                 
                 texto_combinado += f"\n--- DOCUMENTO DETECTADO: {nombre_archivo} ---\n"
@@ -33,16 +32,17 @@ def cargar_todo_el_conocimiento(lista_archivos):
                     if contenido:
                         texto_combinado += f"[Archivo: {nombre_archivo} - Pág {i+1}]: {contenido}\n"
         except Exception:
-            continue # Salta archivos corruptos o bloqueados
+            continue 
             
-    # Límite de seguridad para evitar errores de saturación en la API (aprox 120,000 caracteres)
-    return texto_combined[:120000]
+    # Límite de seguridad para evitar errores de saturación en la API
+    # Aquí estaba el error anterior, ya está corregido a 'texto_combinado'
+    return texto_combinado[:120000]
 
 # --- Lógica de Actualización Automática ---
-# Listamos los archivos fuera de la función cacheada para detectar cambios reales
+# Listamos los archivos fuera para que Streamlit detecte cambios en GitHub
 archivos_en_repositorio = sorted([f for f in os.listdir('.') if f.endswith('.pdf')])
 
-# Si cambias archivos en GitHub, esta línea detectará que la lista es distinta y recargará
+# Si la lista de archivos cambia, la caché se invalida automáticamente
 contexto_profesor = cargar_todo_el_conocimiento(archivos_en_repositorio)
 
 # 3. Interfaz de Chat
@@ -60,10 +60,8 @@ if prompt := st.chat_input("Haz una pregunta sobre cualquier manual cargado...")
 
     with st.chat_message("assistant"):
         try:
-            # Gemini 3 Flash soporta contextos masivos
             model = genai.GenerativeModel(model_name="models/gemini-3-flash-preview")
             
-            # Construimos la instrucción enviando la lista de archivos detectados para que la IA sepa qué tiene
             nombres_archivos = ", ".join(archivos_en_repositorio)
             
             instruccion = (
@@ -78,5 +76,4 @@ if prompt := st.chat_input("Haz una pregunta sobre cualquier manual cargado...")
             st.session_state.messages.append({"role": "assistant", "content": response.text})
             
         except Exception as e:
-            st.error(f"Error: {e}")
-            st.info("Si acabas de subir archivos, espera 1 minuto a que GitHub sincronice y refresca la página.")
+            st.error(f"Error de Google: {e}")
