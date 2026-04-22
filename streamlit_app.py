@@ -1,44 +1,52 @@
 import streamlit as st
 import google.generativeai as genai
+from PyPDF2 import PdfReader # Librería para leer PDFs automáticamente
 
-# Configuración de la página
-st.set_page_config(page_title="Profesor de Logística 24/7", layout="centered")
-st.title("🎓 LogiPro: Tu Profesor de Logística")
-
-# 1. Configurar la API Key (la pondremos de forma segura en Streamlit más adelante)
+# 1. Configuración de API
 api_key = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=api_key)
 
-# 2. Definir las instrucciones del profesor
-SYSTEM_PROMPT = """
-Eres un profesor experto en Logística y Supply Chain. 
-Tu objetivo es guiar al usuario basándote en los manuales proporcionados.
-Responde de forma didáctica, usa ejemplos y asegúrate de que el alumno aprenda.
-Si no sabes algo basado en la info suministrada, admítelo con profesionalismo.
+# 2. Función para extraer texto del archivo adjunto en GitHub
+def extraer_conocimiento(archivo_pdf):
+    reader = PdfReader(archivo_pdf)
+    texto = ""
+    for page in reader.pages:
+        texto += page.extract_text()
+    return texto
+
+# Cargamos el archivo que subiste a GitHub
+# (Asegúrate de que el nombre coincida exactamente)
+contenido_logistica = extraer_conocimiento("manual_logistica.pdf")
+
+# 3. Instrucciones del Sistema (System Instruction)
+SYSTEM_PROMPT = f"""
+Eres un profesor experto en logística. 
+Tu base de conocimiento es el siguiente texto extraído del manual oficial:
+{contenido_logistica}
+
+Responde siempre basándote en este contenido.
 """
 
-# Inicializar el modelo
 model = genai.GenerativeModel(
     model_name="gemini-1.5-pro",
     system_instruction=SYSTEM_PROMPT
 )
 
-# Historial de chat para la sesión actual
+# --- Interfaz de Chat ---
+st.title("🎓 Profesor de Logística 24/7")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Mostrar mensajes previos
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Entrada del usuario
-if prompt := st.chat_input("¿Qué duda logística tienes hoy?"):
+if prompt := st.chat_input("Pregúntame sobre el manual"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Respuesta del profesor
     with st.chat_message("assistant"):
         response = model.generate_content(prompt)
         st.markdown(response.text)
