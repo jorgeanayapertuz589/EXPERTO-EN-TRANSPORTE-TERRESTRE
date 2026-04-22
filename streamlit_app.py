@@ -37,7 +37,8 @@ if prompt := st.chat_input("Escribe tu duda aquí..."):
 
     with st.chat_message("assistant"):
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # Prueba con esta dirección exacta que es la que corresponde a lo que viste
+            model = genai.GenerativeModel(model_name="models/gemini-3-flash-preview")
             # Enviamos una instrucción muy corta
             response = model.generate_content(f"Contexto: {contexto}. Pregunta: {prompt}")
             st.markdown(response.text)
