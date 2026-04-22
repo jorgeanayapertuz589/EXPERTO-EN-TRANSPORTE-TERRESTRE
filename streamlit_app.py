@@ -16,7 +16,17 @@ def extraer_conocimiento(archivo_pdf):
 
 # Cargamos el archivo que subiste a GitHub
 # (Asegúrate de que el nombre coincida exactamente)
-contenido_logistica = extraer_conocimiento("manual_logistica.pdf")
+import os
+
+# Busca cualquier archivo que termine en .pdf en tu repositorio
+archivos_pdf = [f for f in os.listdir('.') if f.endswith('.pdf')]
+
+if archivos_pdf:
+    # Toma el primer PDF que encuentre
+    contenido_logistica = extraer_conocimiento(archivos_pdf[0])
+else:
+    st.error("No encontré ningún archivo PDF en el repositorio. Por favor, sube uno a GitHub.")
+    st.stop()
 
 # 3. Instrucciones del Sistema (System Instruction)
 SYSTEM_PROMPT = f"""
