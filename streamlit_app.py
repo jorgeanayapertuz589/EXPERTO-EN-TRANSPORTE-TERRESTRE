@@ -1,40 +1,48 @@
 import streamlit as st
 import google.generativeai as genai
-from PyPDF2 import PdfReader # Librería para leer PDFs automáticamente
+import os
+from PyPDF2 import PdfReader
 
 # 1. Configuración de API
 api_key = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=api_key)
 
-# 2. Función para extraer texto del archivo adjunto en GitHub
-def extraer_conocimiento(archivo_pdf):
-    reader = PdfReader(archivo_pdf)
-    texto = ""
-    for page in reader.pages:
-        texto += page.extract_text()
-    return texto
+# 2. Función mejorada para leer MÚLTIPLES archivos
+def cargar_toda_la_informacion():
+    texto_total = ""
+    # Listamos todos los archivos en el repositorio
+    archivos = os.listdir('.')
+    archivos_pdf = [f for f in archivos if f.endswith('.pdf')]
+    
+    if not archivos_pdf:
+        st.error("No se encontraron archivos PDF en el repositorio.")
+        st.stop()
+    
+    for archivo in archivos_pdf:
+        try:
+            reader = PdfReader(archivo)
+            for page in reader.pages:
+                texto_total += page.extract_text() + "\n"
+        except Exception as e:
+            st.warning(f"No pude leer el archivo {archivo}: {e}")
+            
+    return texto_total
 
-# Cargamos el archivo que subiste a GitHub
-# (Asegúrate de que el nombre coincida exactamente)
-import os
+# Cargamos el conocimiento de todos los PDFs subidos
+conocimiento_logistica = cargar_toda_la_informacion()
 
-# Busca cualquier archivo que termine en .pdf en tu repositorio
-archivos_pdf = [f for f in os.listdir('.') if f.endswith('.pdf')]
-
-if archivos_pdf:
-    # Toma el primer PDF que encuentre
-    contenido_logistica = extraer_conocimiento(archivos_pdf[0])
-else:
-    st.error("No encontré ningún archivo PDF en el repositorio. Por favor, sube uno a GitHub.")
-    st.stop()
-
-# 3. Instrucciones del Sistema (System Instruction)
+# 3. Instrucciones del Sistema
 SYSTEM_PROMPT = f"""
 Eres un profesor experto en logística. 
-Tu base de conocimiento es el siguiente texto extraído del manual oficial:
-{contenido_logistica}
+Tu base de conocimiento se compone de varios manuales y documentos que te han sido suministrados.
+Aquí tienes el contenido total de esos documentos:
 
-Responde siempre basándote en este contenido.
+{conocimiento_logistica}
+
+Instrucciones:
+- Responde siempre basándote en esta información.
+- Si la respuesta varía entre documentos, intenta dar una respuesta integrada.
+- Si algo no figura en ninguno de los archivos, indícalo claramente.
 """
 
 model = genai.GenerativeModel(
@@ -43,7 +51,8 @@ model = genai.GenerativeModel(
 )
 
 # --- Interfaz de Chat ---
-st.title("🎓 Profesor de Logística 24/7")
+st.title("🎓 Profesor de Logística Multi-Manual")
+st.info(f"📚 El profesor ha leído la información de todos tus PDFs disponibles.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -52,7 +61,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Pregúntame sobre el manual"):
+if prompt := st.chat_input("Haz una pregunta sobre los manuales..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
