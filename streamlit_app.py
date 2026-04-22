@@ -1,59 +1,52 @@
 import streamlit as st
 import google.generativeai as genai
 import os
-from PyPDF2 import PdfReader
+import pdfplumber  # Usamos solo esta que es más robusta
 
 # 1. Configuración de API
 api_key = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=api_key)
 
-# 2. Función mejorada para leer MÚLTIPLES archivos
+# 2. Función para leer múltiples PDFs (Optimizado)
 def cargar_toda_la_informacion():
     texto_total = ""
-    # Listamos todos los archivos en el repositorio
-    archivos = os.listdir('.')
-    archivos_pdf = [f for f in archivos if f.endswith('.pdf')]
+    archivos_pdf = [f for f in os.listdir('.') if f.endswith('.pdf')]
     
     if not archivos_pdf:
-        st.error("No se encontraron archivos PDF en el repositorio.")
-        st.stop()
+        return "No hay manuales cargados."
     
     for archivo in archivos_pdf:
         try:
-            reader = PdfReader(archivo)
-            for page in reader.pages:
-                texto_total += page.extract_text() + "\n"
+            with pdfplumber.open(archivo) as pdf:
+                for page in pdf.pages:
+                    texto_total += page.extract_text() + "\n"
         except Exception as e:
-            st.warning(f"No pude leer el archivo {archivo}: {e}")
+            print(f"Error leyendo {archivo}: {e}")
             
-    return texto_total
+    # IMPORTANTE: Recortamos a 100,000 caracteres para que no agote la cuota gratuita
+    # Esto es suficiente para unas 50-80 páginas de puro texto.
+    return texto_total[:100000]
 
-# Cargamos el conocimiento de todos los PDFs subidos
+# Cargamos el texto una sola vez
 conocimiento_logistica = cargar_toda_la_informacion()
 
-# 3. Instrucciones del Sistema
+# 3. Configuración del Modelo (Usamos Flash para evitar ResourceExhausted)
 SYSTEM_PROMPT = f"""
-Eres un profesor experto en logística. 
-Tu base de conocimiento se compone de varios manuales y documentos que te han sido suministrados.
-Aquí tienes el contenido total de esos documentos:
-
+Eres un profesor experto en logística y transporte terrestre. 
+Responde dudas basado en este contenido:
 {conocimiento_logistica}
 
-Instrucciones:
-- Responde siempre basándote en esta información.
-- Si la respuesta varía entre documentos, intenta dar una respuesta integrada.
-- Si algo no figura en ninguno de los archivos, indícalo claramente.
+Si la respuesta no está en el texto, admítelo con amabilidad.
 """
 
-# Actualiza esta línea con el nombre exacto que viste:
+# Usamos gemini-1.5-flash porque es el que más capacidad gratuita tiene
 model = genai.GenerativeModel(
-    model_name="gemini-3-flash-preview", 
+    model_name="gemini-1.5-flash", 
     system_instruction=SYSTEM_PROMPT
 )
 
 # --- Interfaz de Chat ---
-st.title("🎓 Profesor de Logística Multi-Manual")
-st.info(f"📚 El profesor ha leído la información de todos tus PDFs disponibles.")
+st.title("🎓 Profesor de Logística")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -62,12 +55,15 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Haz una pregunta sobre los manuales..."):
+if prompt := st.chat_input("¿Qué duda tienes sobre el manual?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        response = model.generate_content(prompt)
-        st.markdown(response.text)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+        try:
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
+        except Exception as e:
+            st.error("Se agotó la cuota gratuita por un momento. Espera 60 segundos y vuelve a preguntar.")
