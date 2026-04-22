@@ -3,68 +3,85 @@ import google.generativeai as genai
 import os
 import pdfplumber
 
-# 1. Configuración
+# 1. Configuración de API
 api_key = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=api_key)
 
-st.title("🎓 Profesor de Logística")
+# Configuración visual de la aplicación
+st.set_page_config(page_title="Profesor de Logística Pro", page_icon="📚")
+st.title("🎓 Profesor de Logística (Modo Lectura Profunda)")
 
-# 2. Leer todos los PDFs disponibles (Optimizado)
+# 2. Lógica de procesamiento de gran volumen
 @st.cache_data
-def cargar_manuales_dinamicos():
+def cargar_manuales_extensos():
     texto_combinado = ""
-    # Busca todos los archivos que terminen en .pdf
     archivos = [f for f in os.listdir('.') if f.endswith('.pdf')]
     
     if not archivos:
-        return "No hay documentos PDF cargados en el repositorio."
+        return "No hay documentos cargados en el repositorio."
 
     for nombre_archivo in archivos:
         try:
             with pdfplumber.open(nombre_archivo) as pdf:
-                # Extrae las primeras 2 páginas de cada archivo para no saturar
-                for page in pdf.pages[:2]:
+                # Leemos hasta 100 páginas del documento
+                paginas_objetivo = pdf.pages[:100] 
+                
+                texto_combinado += f"\n--- INICIO DEL DOCUMENTO: {nombre_archivo} ---\n"
+                
+                for i, page in enumerate(paginas_objetivo):
                     contenido = page.extract_text()
                     if contenido:
-                        texto_combinado += f"--- Fuente: {nombre_archivo} ---\n"
-                        texto_combinado += contenido + "\n\n"
+                        texto_combinado += f"[Pág. {i+1}] {contenido}\n"
+                
+                texto_combinado += f"--- FIN DEL DOCUMENTO: {nombre_archivo} ---\n"
         except Exception as e:
-            print(f"Error leyendo {nombre_archivo}: {e}")
+            # Si falla un archivo, continúa con el siguiente
+            continue
             
-    # Mantenemos un límite de 10,000 caracteres para proteger la cuota gratuita
-    return texto_combinado[:10000]
+    # Límite de 100,000 caracteres. 
+    # Esto equivale aproximadamente a 150-200 páginas de texto puro.
+    return texto_combinado[:100000]
 
-# Llamamos a la función que ahora busca múltiples archivos
-contexto = cargar_manuales_dinamicos()
+# El profesor procesa la información en segundo plano
+with st.spinner("El profesor está leyendo los manuales... esto puede tardar un momento."):
+    contexto_profesor = cargar_manuales_extensos()
 
-# Mostrar qué archivos está leyendo el profesor (Opcional, para confirmar)
-with st.expander("Ver documentos detectados"):
-    archivos_detectados = [f for f in os.listdir('.') if f.endswith('.pdf')]
-    st.write(archivos_detectados)
-
-# 3. Chat
+# 3. Interfaz de Chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-for m in st.session_state.messages:
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
+# Historial
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-if prompt := st.chat_input("Escribe tu duda aquí..."):
+# Entrada de preguntas
+if prompt := st.chat_input("Haz una pregunta técnica sobre los manuales..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
         try:
-            # Usamos el modelo que confirmamos que tienes activo
+            # Usamos Gemini 3 Flash Preview por su gran ventana de contexto
             model = genai.GenerativeModel(model_name="models/gemini-3-flash-preview")
             
-            # Instrucción al modelo
-            instruccion = f"Eres un experto en transporte. Basado en este contexto: {contexto}, responde: {prompt}"
+            # Instrucción robusta
+            instruccion = (
+                f"Eres un profesor experto en transporte terrestre y normativa logística. "
+                f"Analiza los siguientes documentos (hasta 100 páginas por archivo):\n\n"
+                f"{contexto_profesor}\n\n"
+                f"Instrucciones: Responde de forma detallada. Si mencionas un dato específico, "
+                f"indica de qué archivo proviene si es posible.\n\n"
+                f"Pregunta del alumno: {prompt}"
+            )
             
             response = model.generate_content(instruccion)
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
+            
         except Exception as e:
-            st.error(f"Error de Google: {e}")
+            if "429" in str(e) or "ResourceExhausted" in str(e):
+                st.error("Los documentos son muy extensos para la cuota gratuita actual. Espera 1 minuto o reduce la cantidad de PDFs en GitHub.")
+            else:
+                st.error(f"Error: {e}")
