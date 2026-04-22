@@ -9,18 +9,38 @@ genai.configure(api_key=api_key)
 
 st.title("🎓 Profesor de Logística")
 
-# 2. Leer solo lo básico (Solo el primer PDF, solo las primeras 3 páginas)
+# 2. Leer todos los PDFs disponibles (Optimizado)
 @st.cache_data
-def cargar_manual_corto():
-    texto = ""
+def cargar_manuales_dinamicos():
+    texto_combinado = ""
+    # Busca todos los archivos que terminen en .pdf
     archivos = [f for f in os.listdir('.') if f.endswith('.pdf')]
-    if archivos:
-        with pdfplumber.open(archivos[0]) as pdf:
-            for page in pdf.pages[:3]: # Solo 3 páginas para no saturar
-                texto += page.extract_text() + "\n"
-    return texto[:5000]
+    
+    if not archivos:
+        return "No hay documentos PDF cargados en el repositorio."
 
-contexto = cargar_manual_corto()
+    for nombre_archivo in archivos:
+        try:
+            with pdfplumber.open(nombre_archivo) as pdf:
+                # Extrae las primeras 2 páginas de cada archivo para no saturar
+                for page in pdf.pages[:2]:
+                    contenido = page.extract_text()
+                    if contenido:
+                        texto_combinado += f"--- Fuente: {nombre_archivo} ---\n"
+                        texto_combinado += contenido + "\n\n"
+        except Exception as e:
+            print(f"Error leyendo {nombre_archivo}: {e}")
+            
+    # Mantenemos un límite de 10,000 caracteres para proteger la cuota gratuita
+    return texto_combinado[:10000]
+
+# Llamamos a la función que ahora busca múltiples archivos
+contexto = cargar_manuales_dinamicos()
+
+# Mostrar qué archivos está leyendo el profesor (Opcional, para confirmar)
+with st.expander("Ver documentos detectados"):
+    archivos_detectados = [f for f in os.listdir('.') if f.endswith('.pdf')]
+    st.write(archivos_detectados)
 
 # 3. Chat
 if "messages" not in st.session_state:
@@ -37,12 +57,14 @@ if prompt := st.chat_input("Escribe tu duda aquí..."):
 
     with st.chat_message("assistant"):
         try:
-            # Prueba con esta dirección exacta que es la que corresponde a lo que viste
+            # Usamos el modelo que confirmamos que tienes activo
             model = genai.GenerativeModel(model_name="models/gemini-3-flash-preview")
-            # Enviamos una instrucción muy corta
-            response = model.generate_content(f"Contexto: {contexto}. Pregunta: {prompt}")
+            
+            # Instrucción al modelo
+            instruccion = f"Eres un experto en transporte. Basado en este contexto: {contexto}, responde: {prompt}"
+            
+            response = model.generate_content(instruccion)
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            # Si falla, mostramos el error real de Google para saber qué pasa
             st.error(f"Error de Google: {e}")
