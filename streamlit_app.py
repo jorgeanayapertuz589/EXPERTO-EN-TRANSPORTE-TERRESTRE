@@ -45,8 +45,9 @@ Instrucciones:
 - Si algo no figura en ninguno de los archivos, indícalo claramente.
 """
 
+# Actualiza esta línea con el nombre exacto que viste:
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", # Cambiamos Pro por Flash
+    model_name="gemini-3-flash-preview", 
     system_instruction=SYSTEM_PROMPT
 )
 
